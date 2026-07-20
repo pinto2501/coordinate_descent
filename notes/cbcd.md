@@ -64,9 +64,7 @@ $$\implies \lambda = \frac{1}{2} \pm \frac{c}{2}$$
  
 So the eigenvalues are $\frac{1+c}{2}$ and $\frac{1-c}{2}$. Since $c > 0$, the spectral radius is
  
-$$\rho(R) = \frac{1+c}{2} \implies \text{ERate(RCD)} = -2\log\rho(R) = -2\log\frac{1+c}{2}$$
- 
-where the factor of $2$ accounts for the epoch scaling ($n = 2$ steps per epoch).
+$$\rho(R) = \frac{1+c}{2} \implies \text{ERate(RCD)} = -\log\rho(R) = -\log\frac{1+c}{2}$$
  
 ### Deriving PRate(RCD) 
  
