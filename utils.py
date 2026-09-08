@@ -100,7 +100,7 @@ def plot_algo(epochs, n, c, verbose=False):
     R, C = initialize_mat(n, c)
     
     ccd_errors, rcd_errors, prcd_errors = run_ccd(epochs, n, c), run_rcd(epochs, n, c), run_prcd(epochs, n, c)
-    fix, ax = plt.subplots(figsize=(8,6))
+    fix, ax = plt.subplots(figsize=(12,8), constrained_layout=True)
     ccd = ax.plot(np.arange(len(ccd_errors)), ccd_errors, label="Rate(CCD)")
     rcd = ax.plot(np.arange(len(rcd_errors)), rcd_errors, label="ERate(RCD)")
     prcd = ax.plot(np.arange(len(prcd_errors)), prcd_errors, label="PRate(RCD)")
