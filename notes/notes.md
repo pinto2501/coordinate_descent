@@ -59,7 +59,7 @@ Observe that when we update coordinate $i_k$, the coordinates $j < i_k$ have alr
 $$
 \begin{aligned}
 (D - L) x^{k+1} &= L^Tx^k \\
-x^{k+1} &= (D + L)^{-1}L^Tx^{k}
+x^{k+1} &= (D - L)^{-1}L^Tx^{k}
 \end{aligned}
 $$
 

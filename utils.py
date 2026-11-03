@@ -87,30 +87,46 @@ def run_prcd(epochs, n, c, verbose=False):
             
     return prcd_errors
 
-def compute_slope(epochs, n, c):
-    ccd_errors, rcd_errors, prcd_errors = run_ccd(epochs, n, c), run_rcd(epochs, n, c), run_prcd(epochs, n, c)
+def multiple_prcd(epochs, n, c, n_runs):
+    prcd_errors = [run_prcd(epochs, n, c) for _ in range(n_runs)]
+    min_len = min(len(errors) for errors in prcd_errors)
 
+    mean_prcd= np.mean([errors[:min_len] for errors in prcd_errors], axis=0)
+    std_prcd = np.std([errors[:min_len] for errors in prcd_errors], axis=0)
+    return prcd_errors, mean_prcd, std_prcd
+
+
+def compute_slope(ccd_errors, rcd_errors, prcd_errors):
     ccd_slope, _ = np.polyfit(range(len(ccd_errors)), ccd_errors, 1)
     ercd_slope, _ = np.polyfit(range(len(rcd_errors)), rcd_errors, 1)
     prcd_slope, _ = np.polyfit(range(len(prcd_errors)), prcd_errors, 1)
 
     return ccd_slope, ercd_slope, prcd_slope
 
-def plot_algo(epochs, n, c, verbose=False):
+def plot_algo(epochs, n, c, n_runs, verbose=False):
     R, C = initialize_mat(n, c)
     
-    ccd_errors, rcd_errors, prcd_errors = run_ccd(epochs, n, c), run_rcd(epochs, n, c), run_prcd(epochs, n, c)
-    fix, ax = plt.subplots(figsize=(12,8), constrained_layout=True)
-    ccd = ax.plot(np.arange(len(ccd_errors)), ccd_errors, label="Rate(CCD)")
-    rcd = ax.plot(np.arange(len(rcd_errors)), rcd_errors, label="ERate(RCD)")
-    prcd = ax.plot(np.arange(len(prcd_errors)), prcd_errors, label="PRate(RCD)")
+    ccd_errors, rcd_errors = run_ccd(epochs, n, c), run_rcd(epochs, n, c)
+    prcd_errors, mean_prcd, std_prcd = multiple_prcd(epochs, n, c, n_runs)
+
+    fig, ax = plt.subplots(figsize=(12,8), constrained_layout=True)
+    ccd = ax.plot(np.arange(len(ccd_errors)), ccd_errors, label="Rate(CCD)", linewidth=3)
+    rcd = ax.plot(np.arange(len(rcd_errors)), rcd_errors, label="ERate(RCD)", linewidth=3)
+
+    for i, errors in enumerate(prcd_errors):
+        ax.plot(np.arange(len(errors)), errors, color="black", alpha=0.25, linestyle='dotted',
+            label="PRate(RCD)" if i == 0 else None)
+
+    ax.plot(np.arange(len(mean_prcd)), mean_prcd, color="green", label="Mean PRate(RCD)", linewidth=1)
+    ax.fill_between(np.arange(len(mean_prcd)), mean_prcd - std_prcd, mean_prcd + std_prcd, color="blue", 
+                    label="Std PRate(RCD)", alpha=0.5)
 
     rho_ccd = np.max(np.abs(np.linalg.eigvals(C)))
     rho_ercd = np.max(np.abs(np.linalg.eigvals(R)))
     rate_ccd = -np.log(rho_ccd)
     rate_ercd = -np.log(rho_ercd)
 
-    ccd_slope, ercd_slope, prcd_slope = compute_slope(epochs, n, c)
+    ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
 
     if verbose:
         print(f"Rate(CCD): {rate_ccd:.4f} | ERate(RCD): {rate_ercd:.4f} (From Spectral Radius)")
@@ -118,17 +134,23 @@ def plot_algo(epochs, n, c, verbose=False):
     
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Error Log Ratio")
-    ax.set_title(f"Algorithms Convergence Rate for n: {n} and c: {c}")
+    ax.set_title(f"Algorithms Convergence Rate for n = {n} and c = {c}")
     ax.legend()
 
-def save_algo(epochs, n_vals, c_vals, fixed=None):
+    return prcd_errors
+
+
+def save_algo(epochs, n_vals, c_vals, n_runs, fixed=None):
     if fixed == "n":
         for n_val in n_vals:
             ccd_list = []
             ercd_list = []
             prcd_list = []
             for c_val in c_vals:
-                ccd_slope, ercd_slope, prcd_slope = compute_slope(epochs, n_val, c_val)
+                ccd_errors, rcd_errors = run_ccd(epochs, n_val, c_val), run_rcd(epochs, n_val, c_val)
+                _, mean_prcd, _ = multiple_prcd(epochs, n_val, c_val, n_runs)
+                ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
+
                 ccd_list.append(round(-ccd_slope, 3))
                 ercd_list.append(round(-ercd_slope, 3))
                 prcd_list.append(round(-prcd_slope, 3))
@@ -150,7 +172,10 @@ def save_algo(epochs, n_vals, c_vals, fixed=None):
             ercd_list = []
             prcd_list = []
             for n_val in n_vals:
-                ccd_slope, ercd_slope, prcd_slope = compute_slope(epochs, n_val, c_val)
+                ccd_errors, rcd_errors = run_ccd(epochs, n_val, c_val), run_rcd(epochs, n_val, c_val)
+                _, mean_prcd, _ = multiple_prcd(epochs, n_val, c_val, n_runs)
+                ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
+                
                 ccd_list.append(round(-ccd_slope, 3))
                 ercd_list.append(round(-ercd_slope, 3))
                 prcd_list.append(round(-prcd_slope, 3))
