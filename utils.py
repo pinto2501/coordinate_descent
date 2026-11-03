@@ -25,7 +25,7 @@ def build_coordinate_matrices(n, c):
     return mats
 
 def run_ccd(epochs, n, c, verbose=False): 
-    R, C = initialize_mat(n, c)
+    _, C = initialize_mat(n, c)
     
     x0 = np.ones((n,1))
     x = x0.copy()
@@ -44,29 +44,12 @@ def run_ccd(epochs, n, c, verbose=False):
         
     return ccd_errors 
 
-def run_rcd(epochs, n, c, verbose=False):
-    R, C = initialize_mat(n, c)
-
-    x0 = np.ones((n,1))
-    x = x0.copy()
-    x_star = np.zeros((n,1))
-    rcd_errors = []
-    
-    for l in range(epochs):
-        x = R @ x
-        norm = np.linalg.norm(x - x_star)
-        if norm < 1e-50:
-            if verbose:
-                print(f"RCD converges at epoch {l}")
-            break
-        ratio = norm / np.linalg.norm(x0 - x_star)
-        rcd_errors.append(np.log(ratio))
-
-    return rcd_errors
+def run_rcd(epochs, n, c):
+    rcd_errors = [epoch * n * np.log(1 - (1 / n) * (1 - c)) for epoch in range(epochs)]
+    return np.array(rcd_errors)
 
 def run_prcd(epochs, n, c, verbose=False): 
     mats = build_coordinate_matrices(n, c)
-    epochs = 5000
     x0 = np.ones((n, 1))
     x = x0.copy()
     x_star = np.zeros((n, 1))
@@ -111,7 +94,7 @@ def plot_algo(epochs, n, c, n_runs, verbose=False):
 
     fig, ax = plt.subplots(figsize=(12,8), constrained_layout=True)
     ccd = ax.plot(np.arange(len(ccd_errors)), ccd_errors, label="Rate(CCD)", linewidth=3)
-    rcd = ax.plot(np.arange(len(rcd_errors)), rcd_errors, label="ERate(RCD)", linewidth=3)
+    rcd = ax.plot(np.arange(len(ccd_errors)), rcd_errors[:len(ccd_errors)], label="ERate(RCD)", linewidth=3)
 
     for i, errors in enumerate(prcd_errors):
         ax.plot(np.arange(len(errors)), errors, color="black", alpha=0.25, linestyle='dotted',
@@ -175,7 +158,7 @@ def save_algo(epochs, n_vals, c_vals, n_runs, fixed=None):
                 ccd_errors, rcd_errors = run_ccd(epochs, n_val, c_val), run_rcd(epochs, n_val, c_val)
                 _, mean_prcd, _ = multiple_prcd(epochs, n_val, c_val, n_runs)
                 ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
-                
+
                 ccd_list.append(round(-ccd_slope, 3))
                 ercd_list.append(round(-ercd_slope, 3))
                 prcd_list.append(round(-prcd_slope, 3))
