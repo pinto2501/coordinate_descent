@@ -1,142 +1,205 @@
 import os
 import numpy as np
 import pandas as pd
-import random
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+LN10 = np.log(10)
+STYLE = {
+    "CCD":   dict(color="#0072B2", ls="-",  lw=1.3),
+    "ERate": dict(color="#000000", ls="--", lw=1.0),
+    "PRate": dict(color="#D55E00", ls="-",  lw=1.3),
+}
 
-def initialize_mat(n, c):
+def set_paper_style(fontsize=8, usetex=False):
+    """
+    Matplotlib defaults for paper figures.
+    """
+    mpl.rcParams.update({
+        "font.size": fontsize,
+        "axes.labelsize": fontsize,
+        "xtick.labelsize": fontsize - 1,
+        "ytick.labelsize": fontsize - 1,
+        "legend.fontsize": fontsize - 1,
+        "legend.frameon": False,
+        "font.family": "serif",
+        "mathtext.fontset": "cm",         
+        "text.usetex": usetex,          
+
+        "axes.linewidth": 0.6,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+
+        "figure.constrained_layout.use": True, 
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.02,
+        "pdf.fonttype": 42,              
+        "ps.fonttype": 42,
+        "figure.dpi": 150,               
+        "savefig.dpi": 600,             
+    })
+
+# Deterministic quantities
+def ccd_matrix(n, c):
+    """
+    Create the motivation square matrix with 1 on the diagonal and c otherwise.
+
+    params:
+        n: dimension
+        c: off-diagonal value
+    """
+
     I = np.identity(n)
     L = -np.tril(c * np.ones((n, n)), k=-1) 
-    A_c = np.identity(n)- L - L.T
-    S = np.diag([1/(n) for i in range(n)])
-    R = np.linalg.matrix_power(I - S @ np.linalg.inv(I) @ A_c, n) 
-    C = np.linalg.inv(I-L) @ L.T
+    return np.linalg.inv(I-L) @ L.T
 
-    return R, C
+def rate_ccd(n, c): 
+    """
+    Compute rate for Cyclic Coordinate Descent (CCD) using the spectral radius.
 
-def build_coordinate_matrices(n, c):
-    mats = []
-    for i in range(n):
-        M = np.eye(n)
-        M[i, :] = -c  
-        M[i, i] = 0.0  
-        mats.append(M)
-    return mats
+    params:
+        n: dimension
+        c: off-diagonal value
+    """
 
-def run_ccd(epochs, n, c, verbose=False): 
-    _, C = initialize_mat(n, c)
+    return -np.log(np.max(np.abs(np.linalg.eigvals(ccd_matrix(n, c)))))
+
+def erate_rcd(n, c):
+    """
+    Compute rate expectedly for Randomized Coordinate Descent (RCD) using the closed-form solution and the eigenvalue from the motivation matrix.
     
-    x0 = np.ones((n,1))
-    x = x0.copy()
-    x_star = np.zeros((n,1))
-    ccd_errors = []
+    params:
+        n: dimension
+        c: off-diagonal value
+    """
     
-    for l in range(epochs):
+    return -n * np.log(1 - (1 / n) * (1 - c))
+
+# Running experiment
+def run_ccd(epochs, n, c, x0):
+    """
+    Run CCD algorithms 
+    """
+    C = ccd_matrix(n, c)
+    x = x0 / np.linalg.norm(x0)
+    errors = np.zeros(epochs + 1)
+
+    for epoch in range(epochs):
         x = C @ x
-        norm = np.linalg.norm(x - x_star)
-        if norm < 1e-50:
-            if verbose:
-                print(f"CCD converges at epoch {l}")
-            break
-        ratio = norm / np.linalg.norm(x0 - x_star)
-        ccd_errors.append(np.log(ratio))
-        
-    return ccd_errors 
+        norm = np.linalg.norm(x)
+        x /= norm
+        errors[epoch + 1] = errors[epoch] + np.log(norm) 
 
-def run_rcd(epochs, n, c):
-    rcd_errors = [epoch * n * np.log(1 - (1 / n) * (1 - c)) for epoch in range(epochs)]
-    return np.array(rcd_errors)
+    return errors
 
-def run_prcd(epochs, n, c, verbose=False): 
-    mats = build_coordinate_matrices(n, c)
-    x0 = np.ones((n, 1))
-    x = x0.copy()
-    x_star = np.zeros((n, 1))
-    prcd_errors = []
-    
-    for l in range(epochs):
-        for i in range(n): 
-            i = random.randint(0, n - 1)
-            x = mats[i] @ x
-        norm = np.linalg.norm(x - x_star)
-        if norm < 1e-50:
-            if verbose:
-                print(f"PRCD converges at iteration {l}")
-            break
-        else:
-            ratio = norm / np.linalg.norm(x0 - x_star)
-            prcd_errors.append(np.log(ratio))
-            
-    return prcd_errors
+def run_prcd(epochs, n, c, x0, n_runs, rng): 
+    """
+    Run each path rate for RCD. Normalized the initial vector
 
-def multiple_prcd(epochs, n, c, n_runs):
-    prcd_errors = [run_prcd(epochs, n, c) for _ in range(n_runs)]
-    min_len = min(len(errors) for errors in prcd_errors)
+    params:
+        epochs: number of epochs
+        n: dimension
+        c: off-diagonal value
+        x0: initial vector
+        n_runs: number of runs for path rate
+        rng: random number generator from np.random.default_rng(seed)
 
-    mean_prcd= np.mean([errors[:min_len] for errors in prcd_errors], axis=0)
-    std_prcd = np.std([errors[:min_len] for errors in prcd_errors], axis=0)
-    return prcd_errors, mean_prcd, std_prcd
+    return:
+        mean_prcd: mean for each path rate for RCD
+        std_prcd: standard deviation for each path rate for RCD
+    """
+
+    errors = np.zeros((n_runs, epochs + 1))
+
+    for row in range(n_runs):
+        x = x0 / np.linalg.norm(x0)             
+        for epoch in range(epochs):
+            S = x.sum()
+            for i in rng.integers(0, n, size=n):  
+                new = -c * (S - x[i])
+                S += new - x[i]
+                x[i] = new
+            norm = np.linalg.norm(x)
+            x /= norm
+            errors[row, epoch + 1] = errors[row, epoch] + np.log(norm)
+
+    mean_prcd = errors.mean(axis=0)
+    std_prcd = errors.std(axis=0)
+
+    return errors, mean_prcd, std_prcd
 
 
-def compute_slope(ccd_errors, rcd_errors, prcd_errors):
-    ccd_slope, _ = np.polyfit(range(len(ccd_errors)), ccd_errors, 1)
-    ercd_slope, _ = np.polyfit(range(len(rcd_errors)), rcd_errors, 1)
-    prcd_slope, _ = np.polyfit(range(len(prcd_errors)), prcd_errors, 1)
+def plot_algo(epochs, n, c, x0, n_runs, rng, floor=40 * LN10):
+    """
+    Plot different algorithms such as CCD, RCD, and ERCD. For RCD, plot both the spread for each path rate and the mean rate for n_runs.
+    The plot shows the convergence rate for every algorithms and the error for path rate.
 
-    return ccd_slope, ercd_slope, prcd_slope
+    params:
+        epochs: number of epochs
+        n: dimension
+        c: off-diagonal value
+        x0: initial vector
+        n_runs: number of runs for path rate
+        rng: random number generator from np.random.default_rng(seed)
+        floor: threshold to set xlim in the plot (default to 40)
 
-def plot_algo(epochs, n, c, n_runs, verbose=False):
-    R, C = initialize_mat(n, c)
-    
-    ccd_errors, rcd_errors = run_ccd(epochs, n, c), run_rcd(epochs, n, c)
-    prcd_errors, mean_prcd, std_prcd = multiple_prcd(epochs, n, c, n_runs)
+    return:
+        fig, ax
+    """
+    ccd_rate = rate_ccd(n, c)
+    rcd_erate = erate_rcd(n, c)
+    x_coor = np.arange(epochs + 1)
 
-    fig, ax = plt.subplots(figsize=(12,8), constrained_layout=True)
-    ccd = ax.plot(np.arange(len(ccd_errors)), ccd_errors, label="Rate(CCD)", linewidth=3)
-    rcd = ax.plot(np.arange(len(ccd_errors)), rcd_errors[:len(ccd_errors)], label="ERate(RCD)", linewidth=3)
+    ccd_errors = run_ccd(epochs, n, c, x0)
+    rcd_errors = -rcd_erate * x_coor
+    prcd_errors, mean_prcd, std_prcd = run_prcd(epochs, n, c, x0, n_runs, rng)
 
-    for i, errors in enumerate(prcd_errors):
-        ax.plot(np.arange(len(errors)), errors, color="black", alpha=0.25, linestyle='dotted',
-            label="PRate(RCD)" if i == 0 else None)
+    half = epochs // 2
+    prcd_rates = -(prcd_errors[:, -1] - prcd_errors[:, half]) / (epochs - half)
+    prcd_rate = np.mean(prcd_rates)
+    prcd_se = prcd_rates.std(ddof=1) / np.sqrt(n_runs)
 
-    ax.plot(np.arange(len(mean_prcd)), mean_prcd, color="green", label="Mean PRate(RCD)", linewidth=1)
-    ax.fill_between(np.arange(len(mean_prcd)), mean_prcd - std_prcd, mean_prcd + std_prcd, color="blue", 
-                    label="Std PRate(RCD)", alpha=0.5)
+    fig, ax = plt.subplots(figsize=(4, 3))
+    ax.plot(x_coor, ccd_errors, **STYLE["CCD"], label=f"CCD (Rate = {ccd_rate:.3f})")
+    ax.plot(x_coor, rcd_errors, **STYLE["ERate"], label=f"Exact slope (ERate = {rcd_erate:.3f})")
 
-    rho_ccd = np.max(np.abs(np.linalg.eigvals(C)))
-    rho_ercd = np.max(np.abs(np.linalg.eigvals(R)))
-    rate_ccd = -np.log(rho_ccd)
-    rate_ercd = -np.log(rho_ercd)
+    ax.plot(x_coor, prcd_errors.T, color=STYLE["PRate"]["color"], lw=0.3, alpha=0.3)
+    ax.fill_between(x_coor, mean_prcd - std_prcd, mean_prcd + std_prcd, color=STYLE["PRate"]["color"], alpha=0.25, lw=0)
+    ax.plot(x_coor, mean_prcd, **STYLE["PRate"], label=f"RCD, mean ± std of {n_runs} runs\n(PRate = {prcd_rate:.3f} ± {prcd_se:.3f})")
 
-    ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
-
-    if verbose:
-        print(f"Rate(CCD): {rate_ccd:.4f} | ERate(RCD): {rate_ercd:.4f} (From Spectral Radius)")
-        print(f"Slope for Rate(CCD): {ccd_slope:.4f} | ERate(RCD): {ercd_slope:.4f} | PRate(RCD):{prcd_slope:.4f}")
-    
-    ax.set_xlabel("Epochs")
-    ax.set_ylabel("Error Log Ratio")
-    ax.set_title(f"Algorithms Convergence Rate for n = {n} and c = {c}")
-    ax.legend()
-
-    return prcd_errors
+    slowest = min(ccd_rate, rcd_erate, prcd_rate)
+    ax.set_xlim(0, min(epochs, 1.1 * floor / slowest))
+    ax.set_ylim(-floor, 1)
+    ax.set_xlabel(r"epoch $\ell$ ($n$ coordinate updates)")
+    ax.set_ylabel(r"$\log\|x_\ell\| / \|x_0\|$")
+    ax.legend(loc="upper right")
+    return fig, ax
 
 
-def save_algo(epochs, n_vals, c_vals, n_runs, fixed=None):
+def save_algo(epochs, n_vals, c_vals, n_runs, rng, fixed=None):
     if fixed == "n":
         for n_val in n_vals:
+            x0 = rng.random(n_val)
+
             ccd_list = []
             ercd_list = []
             prcd_list = []
             for c_val in c_vals:
-                ccd_errors, rcd_errors = run_ccd(epochs, n_val, c_val), run_rcd(epochs, n_val, c_val)
-                _, mean_prcd, _ = multiple_prcd(epochs, n_val, c_val, n_runs)
-                ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
+                ccd_rate = rate_ccd(n_val, c_val)
+                rcd_rate = erate_rcd(n_val, c_val)
+                prcd_errors, _, _ = run_prcd(epochs, n_val, c_val, x0, n_runs, rng)
 
-                ccd_list.append(round(-ccd_slope, 3))
-                ercd_list.append(round(-ercd_slope, 3))
-                prcd_list.append(round(-prcd_slope, 3))
+                half = epochs // 2
+                prcd_rates = -(prcd_errors[:, -1] - prcd_errors[:, half]) / (epochs - half)
+                prcd_rate = np.mean(prcd_rates)
+
+                ccd_list.append(round(-ccd_rate, 3))
+                ercd_list.append(round(-rcd_rate, 3))
+                prcd_list.append(round(-prcd_rate, 3))
 
             df = pd.DataFrame({
                     "c": c_vals.round(3),
@@ -155,13 +218,19 @@ def save_algo(epochs, n_vals, c_vals, n_runs, fixed=None):
             ercd_list = []
             prcd_list = []
             for n_val in n_vals:
-                ccd_errors, rcd_errors = run_ccd(epochs, n_val, c_val), run_rcd(epochs, n_val, c_val)
-                _, mean_prcd, _ = multiple_prcd(epochs, n_val, c_val, n_runs)
-                ccd_slope, ercd_slope, prcd_slope = compute_slope(ccd_errors, rcd_errors, mean_prcd)
+                x0 = rng.random(n_val)
 
-                ccd_list.append(round(-ccd_slope, 3))
-                ercd_list.append(round(-ercd_slope, 3))
-                prcd_list.append(round(-prcd_slope, 3))
+                ccd_rate = rate_ccd(n_val, c_val)
+                rcd_rate = erate_rcd(n_val, c_val)
+                prcd_errors, _, _ = run_prcd(epochs, n_val, c_val, x0, n_runs, rng)
+
+                half = epochs // 2
+                prcd_rates = -(prcd_errors[:, -1] - prcd_errors[:, half]) / (epochs - half)
+                prcd_rate = np.mean(prcd_rates)
+
+                ccd_list.append(round(-ccd_rate, 3))
+                ercd_list.append(round(-rcd_rate, 3))
+                prcd_list.append(round(-prcd_rate, 3))
 
             df = pd.DataFrame({
                     "n": n_vals,
