@@ -84,7 +84,7 @@ def run_ccd(epochs, n, c, x0):
     """
     Run CCD algorithms 
     """
-    
+
     C = ccd_matrix(n, c)
     x = x0 / np.linalg.norm(x0)
     errors = np.zeros(epochs + 1)
@@ -179,6 +179,7 @@ def plot_algo(epochs, n, c, x0, n_runs, rng, floor=40 * LN10):
     ax.set_xlabel(r"epoch $\ell$ ($n$ coordinate updates)")
     ax.set_ylabel(r"$\log\|x_\ell\| / \|x_0\|$")
     ax.legend(loc="upper right")
+    
     return fig, ax
 
 
