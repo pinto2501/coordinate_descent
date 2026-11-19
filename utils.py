@@ -84,6 +84,7 @@ def run_ccd(epochs, n, c, x0):
     """
     Run CCD algorithms 
     """
+    
     C = ccd_matrix(n, c)
     x = x0 / np.linalg.norm(x0)
     errors = np.zeros(epochs + 1)
@@ -150,6 +151,7 @@ def plot_algo(epochs, n, c, x0, n_runs, rng, floor=40 * LN10):
     return:
         fig, ax
     """
+
     ccd_rate = rate_ccd(n, c)
     rcd_erate = erate_rcd(n, c)
     x_coor = np.arange(epochs + 1)
